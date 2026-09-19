@@ -9,9 +9,12 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-
+/.env
+/.env.local
 # testing
 /coverage
+/playwright-report
+/test-results
 
 # next.js
 /.next/
