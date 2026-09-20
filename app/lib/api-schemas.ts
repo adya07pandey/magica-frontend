@@ -141,19 +141,58 @@ export const SelectAttachmentResponseSchema = z.object({
 
 export const RunSnapshotSchema = ActiveRunSchema.passthrough();
 
+export const WaitpointResolutionSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("approval"),
+    decision: z.enum(["approve", "reject"]),
+  }),
+  z.object({
+    kind: z.literal("option"),
+    optionId: z.string(),
+  }),
+]);
+
+export const WaitpointRequestSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("APPROVAL"),
+    question: z.string(),
+    importance: z.string(),
+    whyItMatters: z.string(),
+    expiresInMinutes: z.number(),
+  }),
+  z.object({
+    type: z.literal("OPTIONS"),
+    question: z.string(),
+    importance: z.string(),
+    whyItMatters: z.string(),
+    expiresInMinutes: z.number(),
+    options: z.array(
+      z.object({
+        id: z.string(),
+        label: z.string(),
+        description: z.string(),
+      }),
+    ),
+  }),
+]);
+
+export const WaitpointSchema = z.object({
+  id: z.string(),
+  token: z.string(),
+  type: z.string(),
+  status: z.string(),
+  payload: z
+    .object({ request: WaitpointRequestSchema })
+    .nullable()
+    .optional(),
+  resolution: WaitpointResolutionSchema.nullable().optional(),
+  expiresAt: z.string().nullable().optional(),
+  resolvedAt: z.string().nullable().optional(),
+});
+
 export const RunDetailSchema = z.object({
   run: RunSnapshotSchema.extend({
-    waitpoints: z
-      .array(
-        z.object({
-          id: z.string(),
-          token: z.string(),
-          type: z.string(),
-          status: z.string(),
-          payload: z.unknown().nullable().optional(),
-        }),
-      )
-      .optional(),
+    waitpoints: z.array(WaitpointSchema).optional(),
   }),
 });
 
@@ -164,3 +203,6 @@ export type TaskResponse = z.infer<typeof TaskResponseSchema>;
 export type Attachment = z.infer<typeof AttachmentSchema>;
 export type RunSnapshot = z.infer<typeof RunSnapshotSchema>;
 export type UserProfile = z.infer<typeof UserSchema>;
+export type WaitpointResolution = z.infer<typeof WaitpointResolutionSchema>;
+export type WaitpointRequest = z.infer<typeof WaitpointRequestSchema>;
+export type Waitpoint = z.infer<typeof WaitpointSchema>;

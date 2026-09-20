@@ -2,6 +2,7 @@ import {
   DeleteTaskResponseSchema,
   ForkTaskResponseSchema,
   RunDetailSchema,
+  type WaitpointResolution,
   RunSnapshotSchema,
   SendMessageResponseSchema,
   TaskMutationResponseSchema,
@@ -173,12 +174,12 @@ export async function getRun(getToken: GetToken, runId: string) {
 export async function resolveWaitpoint(
   getToken: GetToken,
   token: string,
-  decision: "approve" | "reject",
+  resolution: WaitpointResolution,
 ) {
   return apiFetch(getToken, `/api/v1/waitpoints/${token}`, {
     method: "POST",
     headers: { "Idempotency-Key": crypto.randomUUID() },
-    body: JSON.stringify({ decision }),
+    body: JSON.stringify({ resolution }),
   });
 }
 

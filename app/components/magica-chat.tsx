@@ -23,6 +23,7 @@ import {
   resolveWaitpoint, sendTaskMessage, stopTask, subscribeToRun, updateTask,
   selectAttachment,
 } from "../lib/api-client";
+import type { Waitpoint, WaitpointResolution } from "../lib/api-schemas";
 import {
   type ApiMessage, type Attachment, type RunSnapshot, type TaskResponse,
   type TaskSummary, type TasksResponse,
@@ -110,34 +111,49 @@ export function MagicaChat({ taskId }: { taskId?: string }) {
   useEffect(() => {
     if (!activeRunId || !taskId || !isSignedIn) return;
     const controller = new AbortController();
-    subscribeToRun(
-      getToken,
-      activeRunId,
-      (snapshot) => {
-        queryClient.setQueriesData(
-          { queryKey: ["task", taskId] },
-          (current: InfiniteData<TaskResponse, string | undefined> | undefined) =>
-            current
-              ? {
-                  ...current,
-                  pages: current.pages.map((page, index) =>
-                    index === 0 ? { ...page, activeRun: snapshot } : page,
-                  ),
-                }
-              : current,
-        );
-        if (!activeStatuses.has(snapshot.status)) {
-          void queryClient.invalidateQueries({ queryKey: ["task", taskId] });
-          void queryClient.invalidateQueries({ queryKey: ["tasks"] });
-          void queryClient.invalidateQueries({ queryKey: ["me"] });
+    let terminal = false;
+
+    const connect = async () => {
+      while (!controller.signal.aborted && !terminal) {
+        try {
+          await subscribeToRun(
+            getToken,
+            activeRunId,
+            (snapshot) => {
+              queryClient.setQueriesData(
+                { queryKey: ["task", taskId] },
+                (current: InfiniteData<TaskResponse, string | undefined> | undefined) =>
+                  current
+                    ? {
+                        ...current,
+                        pages: current.pages.map((page, index) =>
+                          index === 0 ? { ...page, activeRun: snapshot } : page,
+                        ),
+                      }
+                    : current,
+              );
+              terminal = !activeStatuses.has(snapshot.status);
+              if (terminal) {
+                void queryClient.invalidateQueries({ queryKey: ["task", taskId] });
+                void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+                void queryClient.invalidateQueries({ queryKey: ["me"] });
+              }
+            },
+            controller.signal,
+          );
+        } catch {
+          if (!controller.signal.aborted) {
+            void queryClient.invalidateQueries({ queryKey: ["task", taskId] });
+          }
         }
-      },
-      controller.signal,
-    ).catch(() => {
-      if (!controller.signal.aborted) {
-        void queryClient.invalidateQueries({ queryKey: ["task", taskId] });
+
+        if (!controller.signal.aborted && !terminal) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+        }
       }
-    });
+    };
+
+    void connect();
     return () => controller.abort();
   }, [activeRunId, getToken, isSignedIn, queryClient, taskId]);
 
@@ -218,11 +234,11 @@ export function MagicaChat({ taskId }: { taskId?: string }) {
   const approvalMutation = useMutation({
     mutationFn: ({
       token,
-      decision,
+      resolution,
     }: {
       token: string;
-      decision: "approve" | "reject";
-    }) => resolveWaitpoint(getToken, token, decision),
+      resolution: WaitpointResolution;
+    }) => resolveWaitpoint(getToken, token, resolution),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["run", activeRunId] });
       await queryClient.invalidateQueries({ queryKey: ["task", taskId] });
@@ -352,9 +368,10 @@ export function MagicaChat({ taskId }: { taskId?: string }) {
               onStop={() => stopMutation.mutate()}
               stopping={stopMutation.isPending}
               waitpoints={runQuery.data?.run.waitpoints ?? []}
-              onDecision={(token, decision) =>
-                approvalMutation.mutate({ token, decision })
+              onDecision={(token, resolution) =>
+                approvalMutation.mutate({ token, resolution })
               }
+              resolving={approvalMutation.isPending}
               hasOlder={taskQuery.hasNextPage}
               loadingOlder={taskQuery.isFetchingNextPage}
               onLoadOlder={() => void taskQuery.fetchNextPage()}
@@ -672,20 +689,16 @@ function HomePanel(
 }
 
 function TaskPanel({
-  data, loading, onStop, stopping, waitpoints, onDecision, hasOlder,
+  data, loading, onStop, stopping, waitpoints, onDecision, resolving, hasOlder,
   loadingOlder, onLoadOlder, onFork, forking, ...composerProps
 }: ComposerProps & {
   data?: TaskResponse;
   loading: boolean;
   onStop: () => void;
   stopping: boolean;
-  waitpoints: Array<{
-    token: string;
-    type: string;
-    status: string;
-    payload?: unknown;
-  }>;
-  onDecision: (token: string, decision: "approve" | "reject") => void;
+  waitpoints: Waitpoint[];
+  onDecision: (token: string, resolution: WaitpointResolution) => void;
+  resolving: boolean;
   hasOlder: boolean;
   loadingOlder: boolean;
   onLoadOlder: () => void;
@@ -733,6 +746,7 @@ function TaskPanel({
               key={waitpoint.token}
               waitpoint={waitpoint}
               onDecision={onDecision}
+              resolving={resolving}
             />
           ))}
       </div>
@@ -1066,31 +1080,71 @@ function cleanGeneratedAssetText(text: string) {
 function ApprovalCard({
   waitpoint,
   onDecision,
+  resolving,
 }: {
-  waitpoint: { token: string; type: string; payload?: unknown };
-  onDecision: (token: string, decision: "approve" | "reject") => void;
+  waitpoint: Waitpoint;
+  onDecision: (token: string, resolution: WaitpointResolution) => void;
+  resolving: boolean;
 }) {
+  const request = waitpoint.payload?.request;
+
+  if (!request) return null;
+
   return (
     <section className="approval-card">
       <div>
-        <strong>{humanize(waitpoint.type)}</strong>
-        <p>Review this agent action before it continues.</p>
+        <strong>{request.question}</strong>
+        <p>{request.whyItMatters}</p>
       </div>
-      <pre>{formatJson(waitpoint.payload)}</pre>
       <div className="approval-actions">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => onDecision(waitpoint.token, "reject")}
-        >
-          Reject
-        </Button>
-        <Button
-          type="button"
-          onClick={() => onDecision(waitpoint.token, "approve")}
-        >
-          Approve
-        </Button>
+        {request.type === "APPROVAL" ? (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={resolving}
+              onClick={() =>
+                onDecision(waitpoint.token, {
+                  kind: "approval",
+                  decision: "reject",
+                })
+              }
+            >
+              Reject
+            </Button>
+            <Button
+              type="button"
+              disabled={resolving}
+              onClick={() =>
+                onDecision(waitpoint.token, {
+                  kind: "approval",
+                  decision: "approve",
+                })
+              }
+            >
+              Approve
+            </Button>
+          </>
+        ) : (
+          request.options.map((option) => (
+            <Button
+              key={option.id}
+              type="button"
+              variant="outline"
+              className="approval-option"
+              disabled={resolving}
+              title={option.description}
+              onClick={() =>
+                onDecision(waitpoint.token, {
+                  kind: "option",
+                  optionId: option.id,
+                })
+              }
+            >
+              {option.label}
+            </Button>
+          ))
+        )}
       </div>
     </section>
   );
