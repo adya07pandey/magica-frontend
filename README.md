@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 # 🚀 Magica Frontend
+=======
+# Magica Frontend
+>>>>>>> 33bfd71 (adding credits)
 
 Magica is an agent chat interface for running AI media workflows. This repository contains the Next.js frontend: authentication, task history, realtime run updates, attachment upload, and the chat UI that drives backend agent tools such as `gpt_image_2`, `crop_image`, and `merge_videos`.
 

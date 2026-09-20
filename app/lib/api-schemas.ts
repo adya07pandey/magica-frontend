@@ -26,6 +26,7 @@ export const UserSchema = z.object({
   clerkUserId: z.string(),
   name: z.string().nullable().optional(),
   email: z.string().nullable().optional(),
+  creditBalance: z.union([z.string(), z.number()]),
 });
 
 export const TaskMutationResponseSchema = z.object({
@@ -65,6 +66,7 @@ export const RunStepSchema = z.object({
   name: z.string(),
   status: z.string(),
   durationMs: z.number().nullable().optional(),
+  creditsUsed: z.union([z.string(), z.number()]).nullable().optional(),
   output: z.unknown().nullable().optional(),
   errorMessage: z.string().nullable().optional(),
 });
@@ -84,6 +86,10 @@ export const ActiveRunSchema = z.object({
   modelRoute: z.string().optional(),
   actualModel: z.string().nullable().optional(),
   stepCount: z.number().optional(),
+  estimatedCredits: z.union([z.string(), z.number()]).nullable().optional(),
+  reservedCredits: z.union([z.string(), z.number()]).nullable().optional(),
+  actualCredits: z.union([z.string(), z.number()]).nullable().optional(),
+  totalCreditsUsed: z.union([z.string(), z.number()]).nullable().optional(),
   errorCode: z.string().nullable().optional(),
   errorMessage: z.string().nullable().optional(),
   steps: z.array(RunStepSchema).optional(),

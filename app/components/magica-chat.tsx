@@ -129,6 +129,7 @@ export function MagicaChat({ taskId }: { taskId?: string }) {
         if (!activeStatuses.has(snapshot.status)) {
           void queryClient.invalidateQueries({ queryKey: ["task", taskId] });
           void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+          void queryClient.invalidateQueries({ queryKey: ["me"] });
         }
       },
       controller.signal,
@@ -313,6 +314,7 @@ export function MagicaChat({ taskId }: { taskId?: string }) {
       <section className="workspace">
         <TopBar
           userName={meQuery.data?.name ?? user?.firstName ?? undefined}
+          creditBalance={meQuery.data?.creditBalance}
           isSignedIn={Boolean(isSignedIn)}
         />
         <div className="workspace-scroll">
@@ -567,11 +569,20 @@ function SidebarItem({
 
 function TopBar({
   userName,
+  creditBalance,
   isSignedIn,
 }: {
   userName?: string;
+  creditBalance?: string | number;
   isSignedIn: boolean;
 }) {
+  const formattedCredits = creditBalance === undefined
+    ? "Credits"
+    : new Intl.NumberFormat("en", {
+        notation: "compact",
+        maximumFractionDigits: 2,
+      }).format(Number(creditBalance));
+
   return (
     <header className="topbar">
       <div className="model-select">
@@ -588,8 +599,11 @@ function TopBar({
         >
           <FolderOpen size={20} />
         </Button>
-        <div className="credit-pill" title={userName ? `Signed in as ${userName}` : undefined}>
-          <WandSparkles size={17} /> Free
+        <div
+          className="credit-pill"
+          title={userName ? `Signed in as ${userName}` : "Available credits"}
+        >
+          <WandSparkles size={17} /> {formattedCredits}
         </div>
         {isSignedIn ? (
           <UserButton />

@@ -7,6 +7,7 @@ import {
   subscribeToRun,
   updateTask,
 } from "@/app/lib/api-client";
+import type { RunSnapshot } from "@/app/lib/api-schemas";
 
 const getToken = async () => "test-token";
 const server = setupServer();
@@ -59,19 +60,21 @@ describe("API client", () => {
     server.use(
       http.get("http://localhost:3000/backend/api/v1/runs/run-1/events", () =>
         new HttpResponse(
-          'event: run.snapshot\ndata: {"id":"run-1","status":"RUNNING","steps":[]}\n\n',
+          'event: run.snapshot\ndata: {"id":"run-1","status":"COMPLETED","totalCreditsUsed":"270000","steps":[{"id":"step-1","stepNumber":1,"type":"TOOL_CALL","name":"gpt_image_2","status":"COMPLETED","creditsUsed":"270000"}]}\n\n',
           { headers: { "Content-Type": "text/event-stream" } },
         ),
       ),
     );
 
-    const snapshots: string[] = [];
+    const snapshots: RunSnapshot[] = [];
     await subscribeToRun(
       getToken,
       "run-1",
-      (snapshot) => snapshots.push(snapshot.status),
+      (snapshot) => snapshots.push(snapshot),
       new AbortController().signal,
     );
-    expect(snapshots).toEqual(["RUNNING"]);
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]?.totalCreditsUsed).toBe("270000");
+    expect(snapshots[0]?.steps?.[0]?.creditsUsed).toBe("270000");
   });
 });
