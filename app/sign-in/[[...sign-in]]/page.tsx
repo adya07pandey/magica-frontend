@@ -7,7 +7,7 @@ export default function Page() {
         appearance={{
           variables: {
             colorPrimary: "#8b82ff",
-            colorBackground: "#171719",
+            colorBackground: "#ffffff",
             borderRadius: "0.75rem",
           },
         }}
