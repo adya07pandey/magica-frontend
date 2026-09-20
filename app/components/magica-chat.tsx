@@ -13,13 +13,14 @@ import {
   Clock3, CopyPlus, Download, Folder, FolderOpen, ImageIcon, Library,
   LoaderCircle, MessageSquare, Mic, MoreVertical, PanelLeft, Paperclip,
   Pencil, PlugZap, PlusCircle, Search, Sparkles, Square, Star, Trash2,
-  WandSparkles, Wrench, XCircle, type LucideIcon,
+  WandSparkles, Wrench, X, XCircle, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
-  API_BASE, deleteTask, forkTask, getMe, getRun, getTask, listAttachments, listTasks,
+  API_BASE, deleteAttachment, deleteTask, forkTask, getMe, getRun, getTask,
+  listAttachments, listTasks,
   resolveWaitpoint, sendTaskMessage, stopTask, subscribeToRun, updateTask,
   selectAttachment,
 } from "../lib/api-client";
@@ -259,6 +260,14 @@ export function MagicaChat({ taskId }: { taskId?: string }) {
       if (!taskId) router.push(`/chat/${data.taskId}`);
     },
   });
+  const removeAttachmentMutation = useMutation({
+    mutationFn: (attachmentId: string) =>
+      deleteAttachment(getToken, attachmentId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["task", taskId] });
+      await queryClient.invalidateQueries({ queryKey: ["attachments"] });
+    },
+  });
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -287,9 +296,11 @@ export function MagicaChat({ taskId }: { taskId?: string }) {
           ? updateMutation.error.message
           : deleteMutation.error instanceof Error
             ? `Could not delete task. ${deleteMutation.error.message}`
-            : forkMutation.error instanceof Error
-              ? forkMutation.error.message
-        : null;
+            : removeAttachmentMutation.error instanceof Error
+              ? `Could not remove attachment. ${removeAttachmentMutation.error.message}`
+              : forkMutation.error instanceof Error
+                ? forkMutation.error.message
+                : null;
 
   return (
     <main className={`magica-app ${isSignedIn ? "" : "guest"}`}>
@@ -333,7 +344,9 @@ export function MagicaChat({ taskId }: { taskId?: string }) {
           creditBalance={meQuery.data?.creditBalance}
           isSignedIn={Boolean(isSignedIn)}
         />
-        <div className="workspace-scroll">
+        <div
+          className={`workspace-scroll ${taskId ? "task-workspace" : "home-workspace"}`}
+        >
           {!taskId ? (
             <HomePanel
               composer={composer}
@@ -348,6 +361,10 @@ export function MagicaChat({ taskId }: { taskId?: string }) {
               attachmentMenuOpen={attachmentMenuOpen}
               onUpload={() => { setAttachmentMenuOpen(false); setUploaderOpen(true); }}
               onSelectAsset={() => { setAttachmentMenuOpen(false); setAssetLibraryOpen(true); }}
+              onRemoveAttachment={(attachmentId) =>
+                removeAttachmentMutation.mutate(attachmentId)
+              }
+              removingAttachmentId={removeAttachmentMutation.variables}
               onSubmit={submit}
             />
           ) : (
@@ -364,6 +381,10 @@ export function MagicaChat({ taskId }: { taskId?: string }) {
               attachmentMenuOpen={attachmentMenuOpen}
               onUpload={() => { setAttachmentMenuOpen(false); setUploaderOpen(true); }}
               onSelectAsset={() => { setAttachmentMenuOpen(false); setAssetLibraryOpen(true); }}
+              onRemoveAttachment={(attachmentId) =>
+                removeAttachmentMutation.mutate(attachmentId)
+              }
+              removingAttachmentId={removeAttachmentMutation.variables}
               onSubmit={submit}
               onStop={() => stopMutation.mutate()}
               stopping={stopMutation.isPending}
@@ -646,6 +667,8 @@ type ComposerProps = {
   attachmentMenuOpen?: boolean;
   onUpload?: () => void;
   onSelectAsset?: () => void;
+  onRemoveAttachment?: (attachmentId: string) => void;
+  removingAttachmentId?: string;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 };
 
@@ -913,13 +936,37 @@ function ContentBlock({
   return null;
 }
 
-function AttachmentGrid({ attachments }: { attachments: Attachment[] }) {
+function AttachmentGrid({
+  attachments,
+  onRemove,
+  removingAttachmentId,
+}: {
+  attachments: Attachment[];
+  onRemove?: (attachmentId: string) => void;
+  removingAttachmentId?: string;
+}) {
   return (
     <div className="attachment-grid">
       {attachments.map((attachment) => (
         <div className="attachment-card" key={attachment.id}>
           <AttachmentPreview attachment={attachment} />
           <span>{attachment.filename}</span>
+          {onRemove && (
+            <button
+              type="button"
+              className="attachment-remove"
+              aria-label={`Remove ${attachment.filename}`}
+              title="Remove attachment"
+              disabled={removingAttachmentId === attachment.id}
+              onClick={() => onRemove(attachment.id)}
+            >
+              {removingAttachmentId === attachment.id ? (
+                <LoaderCircle size={13} className="spin" />
+              ) : (
+                <X size={14} />
+              )}
+            </button>
+          )}
         </div>
       ))}
     </div>
@@ -1154,7 +1201,7 @@ function Composer({
   variant, composer, setComposer, planMode, togglePlanMode, isSending, error,
   onAttach, onSubmit, placeholder, active = false, onStop, stopping = false,
   attachmentMenuOpen = false, onUpload, onSelectAsset,
-  attachments = [],
+  attachments = [], onRemoveAttachment, removingAttachmentId,
 }: ComposerProps & {
   variant: "home" | "task";
   placeholder: string;
@@ -1166,7 +1213,11 @@ function Composer({
   return (
     <form className={`composer ${variant}`} onSubmit={onSubmit}>
       {attachments.length > 0 && (
-        <AttachmentGrid attachments={attachments} />
+        <AttachmentGrid
+          attachments={attachments}
+          onRemove={onRemoveAttachment}
+          removingAttachmentId={removingAttachmentId}
+        />
       )}
       <Textarea
         value={composer}

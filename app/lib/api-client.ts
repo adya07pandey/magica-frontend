@@ -216,6 +216,15 @@ export async function selectAttachment(getToken: GetToken, attachmentId: string,
   }));
 }
 
+export async function deleteAttachment(
+  getToken: GetToken,
+  attachmentId: string,
+) {
+  return apiFetch(getToken, `/api/attachments/${attachmentId}`, {
+    method: "DELETE",
+  });
+}
+
 export async function subscribeToRun(
   getToken: GetToken,
   runId: string,

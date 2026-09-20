@@ -39,7 +39,8 @@ button {
 .magica-app {
   display: grid;
   grid-template-columns: 310px minmax(0, 1fr);
-  min-height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   background: var(--bg);
 }
 
@@ -118,7 +119,7 @@ button {
   cursor: pointer;
   padding: 0 10px;
   text-align: left;
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .nav-mark {
@@ -141,6 +142,12 @@ button {
   gap: 4px;
   padding: 0 10px;
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.recent-list::-webkit-scrollbar {
+  display: none;
 }
 
 .recent-row {
@@ -173,7 +180,7 @@ button {
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .recent-item span {
@@ -286,7 +293,7 @@ button {
   background: transparent;
   color: #c3c9d2;
   cursor: pointer;
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .account-pill {
@@ -311,8 +318,11 @@ button {
 
 .workspace {
   display: grid;
+  height: 100dvh;
   min-width: 0;
+  min-height: 0;
   grid-template-rows: 78px minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .topbar {
@@ -334,7 +344,7 @@ button {
 
 .model-select {
   gap: 12px;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
 }
 
@@ -556,10 +566,17 @@ button {
 }
 
 .workspace-scroll {
-  overflow-y: auto;
   min-height: 0;
+}
+
+.home-workspace {
+  overflow-y: auto;
   scrollbar-color: #657184 transparent;
   scrollbar-width: thin;
+}
+
+.task-workspace {
+  overflow: hidden;
 }
 
 .home-panel {
@@ -628,14 +645,14 @@ button {
 
 .hero-center h1 {
   margin: 12px 0;
-  font-size: 30px;
+  font-size: 28px;
   font-weight: 800;
 }
 
 .hero-center p {
   margin: 0;
   color: #c8cdd6;
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .composer {
@@ -652,11 +669,10 @@ button {
 }
 
 .composer.task {
-  position: sticky;
+  position: relative;
   z-index: 5;
-  bottom: 20px;
   min-height: 166px;
-  margin: 20px auto 0;
+  margin: 0 auto;
 }
 
 .composer textarea {
@@ -667,7 +683,7 @@ button {
   background: transparent;
   color: var(--text);
   padding: 24px 20px 0;
-  font-size: 17px;
+  font-size: 15px;
 }
 
 .composer textarea::placeholder {
@@ -790,7 +806,7 @@ button {
   color: #c7ccd5;
   cursor: pointer;
   padding: 0 12px;
-  font-size: 17px;
+  font-size: 15px;
 }
 
 .category-pill.selected {
@@ -799,9 +815,15 @@ button {
 }
 
 .task-panel {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
   max-width: 1250px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 16px;
   margin: 0 auto;
-  padding: 86px 24px 24px;
+  padding: 24px;
 }
 
 .conversation-state {
@@ -838,7 +860,7 @@ button {
 .message-text {
   margin: 0 0 12px;
   color: #f7f7f8;
-  font-size: 17px;
+  font-size: 15px;
   line-height: 1.6;
   white-space: pre-wrap;
 }
@@ -902,16 +924,21 @@ button {
 }
 
 .attachment-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 220px));
+  display: flex;
   gap: 10px;
   margin: 10px 0;
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 3px;
+  scrollbar-width: thin;
 }
 
 .attachment-card {
+  position: relative;
   display: grid;
-  min-height: 100px;
-  place-items: center;
+  flex: 0 0 168px;
+  min-width: 0;
+  grid-template-rows: 104px 32px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -921,7 +948,7 @@ button {
 .attachment-card img,
 .attachment-card video {
   width: 100%;
-  aspect-ratio: 1.25 / 1;
+  height: 104px;
   object-fit: cover;
 }
 
@@ -937,6 +964,26 @@ button {
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.attachment-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: 50%;
+  background: rgb(12 12 13 / 0.86);
+  color: #fff;
+  cursor: pointer;
+}
+
+.attachment-remove:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .generated-asset {
@@ -1013,7 +1060,25 @@ button {
 }
 
 .composer > .attachment-grid {
-  padding: 8px 18px 0;
+  margin: 10px 18px 0;
+  padding: 0 0 4px;
+}
+
+.composer .attachment-card {
+  flex-basis: 148px;
+  grid-template-rows: 86px 28px;
+}
+
+.composer .attachment-card img,
+.composer .attachment-card video {
+  height: 86px;
+}
+
+.composer .attachment-remove {
+  width: 24px;
+  height: 24px;
+  background: rgb(12 12 13 / 0.88);
+  color: #fff;
 }
 
 .composer > .attachment-grid + textarea {
@@ -1162,7 +1227,11 @@ button {
 .upload-actions button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .conversation {
-  min-height: calc(100vh - 310px);
+  min-height: 0;
+  overflow-y: auto;
+  padding: 62px 0 16px;
+  scrollbar-color: #657184 transparent;
+  scrollbar-width: thin;
 }
 
 .user-bubble {
