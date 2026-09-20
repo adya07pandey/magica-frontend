@@ -991,6 +991,26 @@ button {
   background: #101011;
 }
 
+.run-activity.thinking {
+  width: fit-content;
+  max-width: 100%;
+  padding: 11px 14px;
+}
+
+.streaming-response {
+  position: relative;
+  width: min(100%, 820px);
+  margin: 16px 0;
+}
+
+.streaming-response .message-text {
+  display: inline;
+}
+
+.streaming-response .message-text > :last-child {
+  display: inline;
+}
+
 .approval-card pre {
   overflow-x: auto;
   margin: 12px 0 0;

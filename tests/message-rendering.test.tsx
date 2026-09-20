@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { ExecutionSteps, MarkdownText } from "../app/components/magica-chat";
+import { ExecutionSteps, MarkdownText, RunActivity, StopButton } from "../app/components/magica-chat";
 
 describe("message rendering", () => {
   it("renders assistant markdown as structured content", () => {
@@ -51,5 +51,48 @@ describe("message rendering", () => {
     expect(screen.getAllByText("Italy.mp4")).toHaveLength(2);
     expect(screen.queryByText("video-1")).not.toBeInTheDocument();
     expect(screen.queryByText(/\"status\"/)).not.toBeInTheDocument();
+  });
+
+  it("replaces Thinking with partial Markdown as soon as text streams", () => {
+    const { rerender } = render(
+      <RunActivity run={{ id: "run-1", status: "RUNNING", steps: [] }} />,
+    );
+    expect(screen.getByText("Thinking")).toBeVisible();
+
+    rerender(
+      <RunActivity
+        run={{
+          id: "run-1",
+          status: "RUNNING",
+          steps: [
+            {
+              id: "step-1",
+              stepNumber: 1,
+              type: "MODEL_CALL",
+              name: "Initial model call",
+              status: "RUNNING",
+              output: { content: "## Geometry\n\nAngles and shapes" },
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.queryByText("Thinking")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Geometry" })).toBeVisible();
+    expect(screen.getByText("Angles and shapes")).toBeVisible();
+  });
+
+  it("turns the send control into an actionable stop button", () => {
+    let stopped = false;
+    const { rerender } = render(
+      <StopButton stopping={false} onStop={() => { stopped = true; }} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop generating" }));
+    expect(stopped).toBe(true);
+
+    rerender(<StopButton stopping onStop={() => undefined} />);
+    expect(screen.getByRole("button", { name: "Stopping run" })).toBeDisabled();
   });
 });

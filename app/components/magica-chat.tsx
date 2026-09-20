@@ -176,8 +176,26 @@ export function MagicaChat({ taskId }: { taskId?: string }) {
 
   const stopMutation = useMutation({
     mutationFn: () => stopTask(getToken, taskId!),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["task", taskId] }),
+    onMutate: () => {
+      queryClient.setQueriesData(
+        { queryKey: ["task", taskId] },
+        (current: InfiniteData<TaskResponse, string | undefined> | undefined) =>
+          current
+            ? {
+                ...current,
+                pages: current.pages.map((page, index) =>
+                  index === 0 && page.activeRun
+                    ? { ...page, activeRun: { ...page.activeRun, status: "STOPPING" } }
+                    : page,
+                ),
+              }
+            : current,
+      );
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["task", taskId] });
+      await queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
   });
 
   const updateMutation = useMutation({
@@ -290,7 +308,9 @@ export function MagicaChat({ taskId }: { taskId?: string }) {
 
   const tasks = tasksQuery.data?.pages.flatMap((page) => page.tasks) ?? [];
   const error =
-    sendMutation.error instanceof Error
+    stopMutation.error instanceof Error
+      ? `Could not stop the run. ${stopMutation.error.message}`
+      : sendMutation.error instanceof Error
       ? sendMutation.error.message
       : taskQuery.error instanceof Error
         ? taskQuery.error.message
@@ -1202,7 +1222,7 @@ function GeneratedAsset({
   );
 }
 
-function RunActivity({ run }: { run: RunSnapshot }) {
+export function RunActivity({ run }: { run: RunSnapshot }) {
   const isActive = activeStatuses.has(run.status);
   const hasToolActivity = Boolean(
     run.toolInvocations?.length ||
@@ -1214,6 +1234,15 @@ function RunActivity({ run }: { run: RunSnapshot }) {
     .at(-1);
 
   if (isActive && !hasToolActivity) {
+    if (streamedText) {
+      return (
+        <section className="streaming-response" aria-live="polite">
+          <MarkdownText text={streamedText} />
+          <span aria-hidden="true" className="streaming-caret" />
+        </section>
+      );
+    }
+
     return (
       <section className="run-activity thinking" aria-live="polite">
         <div className="run-heading">
@@ -1439,15 +1468,7 @@ function Composer({
             <Mic size={20} />
           </button>
           {active ? (
-            <button
-              type="button"
-              className="stop-button running"
-              onClick={onStop}
-              disabled={stopping}
-              aria-label="Stop run"
-            >
-              <LoaderCircle size={17} className="spin" />
-            </button>
+            <StopButton stopping={stopping} onStop={onStop} />
           ) : (
             <button
               type="submit"
@@ -1464,6 +1485,31 @@ function Composer({
         <div className="composer-error" role="alert">{error}</div>
       )}
     </form>
+  );
+}
+
+export function StopButton({
+  stopping,
+  onStop,
+}: {
+  stopping: boolean;
+  onStop?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="stop-button running"
+      onClick={onStop}
+      disabled={stopping}
+      aria-label={stopping ? "Stopping run" : "Stop generating"}
+      title={stopping ? "Stopping" : "Stop generating"}
+    >
+      {stopping ? (
+        <LoaderCircle size={17} className="spin" />
+      ) : (
+        <Square size={14} fill="currentColor" />
+      )}
+    </button>
   );
 }
 
