@@ -18,6 +18,8 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   API_BASE, deleteAttachment, deleteTask, forkTask, getMe, getRun, getTask,
   listAttachments, listTasks,
@@ -817,18 +819,33 @@ function MessageView({
     if (!block || typeof block !== "object") return false;
     return (block as Record<string, unknown>).type === "generated_asset";
   });
+  const executionBlocks = blocks.filter(isExecutionBlock);
+  const firstExecutionIndex = blocks.findIndex(isExecutionBlock);
   return (
     <article
       className={`chat-message ${message.role.toLowerCase()} ${message.status.toLowerCase()}`}
     >
       <div className="message-content">
-        {blocks.map((block, index) => (
-          <ContentBlock
-            key={`${message.id}-${index}`}
-            block={block}
-            hasGeneratedAsset={hasGeneratedAsset}
-          />
-        ))}
+        {blocks.map((block, index) => {
+          if (isExecutionBlock(block)) {
+            return index === firstExecutionIndex ? (
+              <ExecutionSteps
+                key={`${message.id}-steps`}
+                blocks={executionBlocks}
+                hasGeneratedAsset={hasGeneratedAsset}
+              />
+            ) : null;
+          }
+
+          return (
+            <ContentBlock
+              key={`${message.id}-${index}`}
+              block={block}
+              hasGeneratedAsset={hasGeneratedAsset}
+              renderMarkdown={message.role === "ASSISTANT"}
+            />
+          );
+        })}
         {message.attachments?.length && !hasGeneratedAsset ? (
           <AttachmentGrid attachments={message.attachments} />
         ) : null}
@@ -861,9 +878,11 @@ function MessageView({
 function ContentBlock({
   block,
   hasGeneratedAsset = false,
+  renderMarkdown = false,
 }: {
   block: unknown;
   hasGeneratedAsset?: boolean;
+  renderMarkdown?: boolean;
 }) {
   if (!block || typeof block !== "object") return null;
   const value = block as Record<string, unknown>;
@@ -872,43 +891,10 @@ function ContentBlock({
       ? cleanGeneratedAssetText(value.text)
       : value.text;
     if (!text) return null;
-    return <p className="message-text">{text}</p>;
-  }
-  if (value.type === "tool_call") {
-    return (
-      <div className="dynamic-tool-card">
-        <div className="tool-header">
-          <div className="tool-title">
-            <WandSparkles size={20} />
-            <strong>{humanize(String(value.toolName ?? "Tool"))}</strong>
-            <Clock3 size={14} />
-          </div>
-        </div>
-        <pre>{formatJson(value.input)}</pre>
-      </div>
-    );
-  }
-  if (value.type === "tool_result") {
-    const failed = value.status === "FAILED";
-    const output = value.output && typeof value.output === "object" ? (value.output as Record<string, unknown>) : undefined;
-    const fallbackImageUrl = !hasGeneratedAsset
-      ? typeof output?.image_url === "string"
-        ? output.image_url
-        : Array.isArray(output?.image_urls) && typeof output.image_urls[0] === "string"
-          ? output.image_urls[0]
-          : null
-      : null;
-    const fallbackVideoUrl = !hasGeneratedAsset && typeof output?.video_url === "string" ? output.video_url : null;
-    return (
-      <div className={`tool-result ${failed ? "failed" : ""}`}>
-        {failed ? <XCircle size={17} /> : <CheckCircle2 size={17} />}
-        <div>
-          <strong>{humanize(String(value.toolName ?? "Tool"))}</strong>
-          {fallbackImageUrl && <GeneratedAsset url={fallbackImageUrl} assetType="image" />}
-          {fallbackVideoUrl && <GeneratedAsset url={fallbackVideoUrl} assetType="video" />}
-          <pre>{formatJson(value.output ?? value.error)}</pre>
-        </div>
-      </div>
+    return renderMarkdown ? (
+      <MarkdownText text={text} />
+    ) : (
+      <p className="message-text">{text}</p>
     );
   }
   if (
@@ -934,6 +920,201 @@ function ContentBlock({
     );
   }
   return null;
+}
+
+export function MarkdownText({ text }: { text: string }) {
+  return (
+    <div className="message-text markdown-content">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+    </div>
+  );
+}
+
+type ExecutionEntry = {
+  id: string;
+  call?: Record<string, unknown>;
+  result?: Record<string, unknown>;
+};
+
+function isExecutionBlock(block: unknown) {
+  if (!block || typeof block !== "object") return false;
+  const type = (block as Record<string, unknown>).type;
+  return type === "tool_call" || type === "tool_result";
+}
+
+export function ExecutionSteps({
+  blocks,
+  hasGeneratedAsset,
+}: {
+  blocks: unknown[];
+  hasGeneratedAsset: boolean;
+}) {
+  const entries: ExecutionEntry[] = [];
+  const byId = new Map<string, ExecutionEntry>();
+
+  for (const block of blocks) {
+    const value = block as Record<string, unknown>;
+    const id = String(value.toolCallId ?? `${value.toolName}-${entries.length}`);
+    let entry = byId.get(id);
+    if (!entry) {
+      entry = { id };
+      byId.set(id, entry);
+      entries.push(entry);
+    }
+    if (value.type === "tool_call") entry.call = value;
+    if (value.type === "tool_result") entry.result = value;
+  }
+
+  const failed = entries.some((entry) => entry.result?.status === "FAILED");
+  const completed = entries.filter((entry) => entry.result?.status === "COMPLETED").length;
+
+  return (
+    <details className="execution-steps">
+      <summary>
+        <span className={`execution-status ${failed ? "failed" : ""}`}>
+          {failed ? <XCircle size={17} /> : <CheckCircle2 size={17} />}
+        </span>
+        <strong>Steps</strong>
+        <span>{completed} of {entries.length} completed</span>
+        <ChevronDown className="execution-chevron" size={17} />
+      </summary>
+      <div className="execution-step-list">
+        {entries.map((entry, index) => (
+          <ExecutionStep
+            key={entry.id}
+            entry={entry}
+            number={index + 1}
+            hasGeneratedAsset={hasGeneratedAsset}
+          />
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function ExecutionStep({
+  entry,
+  number,
+  hasGeneratedAsset,
+}: {
+  entry: ExecutionEntry;
+  number: number;
+  hasGeneratedAsset: boolean;
+}) {
+  const toolName = String(entry.call?.toolName ?? entry.result?.toolName ?? "Tool");
+  const failed = entry.result?.status === "FAILED";
+  const output = entry.result?.output ?? entry.result?.error;
+  const outputRecord = output && typeof output === "object"
+    ? output as Record<string, unknown>
+    : undefined;
+  const fallbackImageUrl = !hasGeneratedAsset
+    ? typeof outputRecord?.image_url === "string"
+      ? outputRecord.image_url
+      : Array.isArray(outputRecord?.image_urls) && typeof outputRecord.image_urls[0] === "string"
+        ? outputRecord.image_urls[0]
+        : null
+    : null;
+  const fallbackVideoUrl = !hasGeneratedAsset && typeof outputRecord?.video_url === "string"
+    ? outputRecord.video_url
+    : null;
+  const displayOutput = formatToolOutput(toolName, entry.call?.input, output);
+  const credits = Number(entry.result?.creditsUsed ?? 0);
+
+  return (
+    <section className={`execution-step ${failed ? "failed" : ""}`}>
+      <div className="execution-step-heading">
+        <span className="execution-step-number">{number}</span>
+        <Wrench size={17} />
+        <strong>{humanize(toolName)}</strong>
+        <span className="execution-step-state">
+          {entry.result ? (failed ? "Failed" : "Completed") : "Running"}
+        </span>
+        {credits > 0 && <small>{credits.toLocaleString()} credits</small>}
+      </div>
+      <div className="execution-fields">
+        <PrettyFields value={entry.call?.input} />
+        {displayOutput !== undefined && (
+          <div className="execution-output">
+            <span className="execution-label">Result</span>
+            <PrettyValue value={displayOutput} />
+          </div>
+        )}
+      </div>
+      {fallbackImageUrl && <GeneratedAsset url={fallbackImageUrl} assetType="image" />}
+      {fallbackVideoUrl && <GeneratedAsset url={fallbackVideoUrl} assetType="video" />}
+    </section>
+  );
+}
+
+function PrettyFields({ value }: { value: unknown }) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value == null ? null : <PrettyValue value={value} />;
+  }
+
+  return (
+    <dl className="pretty-fields">
+      {Object.entries(value as Record<string, unknown>)
+        .filter(([key, fieldValue]) =>
+          fieldValue !== undefined &&
+          fieldValue !== null &&
+          !/(^id$|id$|token$)/i.test(key),
+        )
+        .map(([key, fieldValue]) => (
+          <div key={key}>
+            <dt>{humanize(key)}</dt>
+            <dd><PrettyValue value={fieldValue} /></dd>
+          </div>
+        ))}
+    </dl>
+  );
+}
+
+function PrettyValue({ value }: { value: unknown }) {
+  if (Array.isArray(value)) {
+    return (
+      <ul className="pretty-list">
+        {value.map((item, index) => <li key={index}><PrettyValue value={item} /></li>)}
+      </ul>
+    );
+  }
+  if (value && typeof value === "object") {
+    return <PrettyFields value={value} />;
+  }
+  if (typeof value === "boolean") return <>{value ? "Yes" : "No"}</>;
+  if (typeof value === "string" && /^https?:\/\//i.test(value)) {
+    return <a href={value} target="_blank" rel="noreferrer">{friendlyUrlLabel(value)}</a>;
+  }
+  return <>{String(value ?? "")}</>;
+}
+
+function formatToolOutput(toolName: string, input: unknown, output: unknown) {
+  if (toolName !== "request_user_input" || !output || typeof output !== "object") {
+    return output;
+  }
+
+  const result = output as Record<string, unknown>;
+  const resolution = result.resolution;
+  if (!resolution || typeof resolution !== "object") return output;
+  const optionId = (resolution as Record<string, unknown>).optionId;
+  const request = input && typeof input === "object" ? input as Record<string, unknown> : undefined;
+  const options = Array.isArray(request?.options) ? request.options : [];
+  const selected = options.find((option) =>
+    option && typeof option === "object" && (option as Record<string, unknown>).id === optionId,
+  ) as Record<string, unknown> | undefined;
+
+  return {
+    status: result.status,
+    selected: selected?.label ?? optionId ?? "Response received",
+  };
+}
+
+function friendlyUrlLabel(value: string) {
+  try {
+    const filename = decodeURIComponent(new URL(value).pathname.split("/").filter(Boolean).at(-1) ?? "");
+    return filename ? filename.replaceAll("_", " ") : "Open link";
+  } catch {
+    return "Open link";
+  }
 }
 
 function AttachmentGrid({
@@ -1291,16 +1472,6 @@ function humanize(value: string) {
     .toLowerCase()
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function formatJson(value: unknown) {
-  if (value == null) return "";
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
 }
 
 function extractStepText(output: unknown) {
