@@ -57,6 +57,7 @@ export const MessageSchema = z.object({
   contentBlocks: z.unknown(),
   attachments: z.array(AttachmentSchema).optional(),
   createdAt: z.string().optional(),
+  totalCreditsUsed: z.union([z.string(), z.number()]).nullable().optional(),
 });
 
 export const RunStepSchema = z.object({

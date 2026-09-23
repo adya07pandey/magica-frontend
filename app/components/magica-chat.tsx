@@ -10,7 +10,7 @@ import {
 } from "@tanstack/react-query";
 import {
   ArrowDown, ArrowUp, BookOpen, CheckCircle2, ChevronDown, CircleHelp,
-  Clock3, CopyPlus, Download, Folder, FolderOpen, ImageIcon, Library,
+  Clock3, Copy, Download, Folder, FolderOpen, GitFork, ImageIcon, Library,
   LoaderCircle, MessageSquare, Mic, MoreVertical, PanelLeft, Paperclip,
   Pencil, PlugZap, PlusCircle, Search, Sparkles, Square, Star, Trash2,
   WandSparkles, Wrench, X, XCircle, type LucideIcon,
@@ -841,6 +841,8 @@ function MessageView({
   });
   const executionBlocks = blocks.filter(isExecutionBlock);
   const firstExecutionIndex = blocks.findIndex(isExecutionBlock);
+  const copyText = getMessageCopyText(blocks, hasGeneratedAsset);
+  const totalCreditsUsed = formatCreditsUsed(message.totalCreditsUsed);
   return (
     <article
       className={`chat-message ${message.role.toLowerCase()} ${message.status.toLowerCase()}`}
@@ -880,6 +882,18 @@ function MessageView({
       )}
       {message.role === "ASSISTANT" && message.status === "COMPLETED" && (
         <div className="message-actions">
+          {totalCreditsUsed && (
+            <span className="message-credits">{totalCreditsUsed}</span>
+          )}
+          <button
+            type="button"
+            aria-label="Copy message"
+            title="Copy message"
+            onClick={() => void navigator.clipboard.writeText(copyText)}
+            disabled={!copyText}
+          >
+            <Copy size={15} />
+          </button>
           <button
             type="button"
             aria-label="Fork conversation from this message"
@@ -887,12 +901,42 @@ function MessageView({
             onClick={() => onFork(message.id)}
             disabled={forking}
           >
-            <CopyPlus size={16} />
+            <GitFork size={15} />
           </button>
         </div>
       )}
     </article>
   );
+}
+
+function getMessageCopyText(blocks: unknown[], hasGeneratedAsset: boolean) {
+  return blocks
+    .map((block) => {
+      if (!block || typeof block !== "object") return "";
+      const value = block as Record<string, unknown>;
+      if (value.type === "text" && typeof value.text === "string") {
+        return hasGeneratedAsset
+          ? cleanGeneratedAssetText(value.text)
+          : value.text;
+      }
+      if (value.type === "generated_asset" && typeof value.url === "string") {
+        return value.url;
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+}
+
+function formatCreditsUsed(value: string | number | null | undefined) {
+  if (value == null) return null;
+  const credits = Number(value);
+  if (!Number.isFinite(credits)) return null;
+  return `${new Intl.NumberFormat("en", {
+    notation: credits >= 1000 ? "compact" : "standard",
+    maximumFractionDigits: credits >= 1000 ? 2 : 0,
+  }).format(credits)} credits used`;
 }
 
 function ContentBlock({
