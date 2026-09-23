@@ -166,6 +166,7 @@ export function MagicaChat({ taskId }: { taskId?: string }) {
     onSuccess: async (data) => {
       clearComposerForTask(composerKey);
       void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      scheduleTitleRefresh(queryClient, data.taskId ?? taskId);
       if (!taskId && data.taskId) {
         router.push(`/chat/${data.taskId}`);
       } else if (taskId) {
@@ -937,6 +938,22 @@ function formatCreditsUsed(value: string | number | null | undefined) {
     notation: credits >= 1000 ? "compact" : "standard",
     maximumFractionDigits: credits >= 1000 ? 2 : 0,
   }).format(credits)} credits used`;
+}
+
+function scheduleTitleRefresh(
+  queryClient: ReturnType<typeof useQueryClient>,
+  refreshedTaskId?: string,
+) {
+  for (const delay of [1_500, 4_000, 8_000]) {
+    window.setTimeout(() => {
+      void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      if (refreshedTaskId) {
+        void queryClient.invalidateQueries({
+          queryKey: ["task", refreshedTaskId],
+        });
+      }
+    }, delay);
+  }
 }
 
 function ContentBlock({
